@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GeoMap Catalog Manager - Project Architecture</title>
+    <script type="module">
+      import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+      mermaid.initialize({ startOnLoad: true, theme: 'default' });
+    </script>
+    <style>
+        :root {
+            --bg-color: #f4f4f9;
+            --text-color: #333;
+            --primary-color: #4b6eaf;
+            --secondary-color: #5c7ebd;
+            --border-color: #ddd;
+            --code-bg: #eaeaea;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            line-height: 1.6;
+            margin: 0;
+            padding: 0;
+        }
+        header {
+            background-color: var(--primary-color);
+            color: white;
+            padding: 2rem 0;
+            text-align: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .container {
+            max-width: 1000px;
+            margin: 2rem auto;
+            padding: 20px;
+            background: white;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.05);
+            border-radius: 8px;
+        }
+        h1, h2, h3 {
+            color: var(--primary-color);
+        }
+        h1 { margin-top: 0; }
+        h2 { border-bottom: 2px solid var(--border-color); padding-bottom: 5px; margin-top: 2rem; }
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        .card {
+            background: var(--bg-color);
+            padding: 15px;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+        }
+        code {
+            background: var(--code-bg);
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+        ul { padding-left: 20px; }
+        .mermaid {
+            background: white;
+            padding: 15px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            text-align: center;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>GeoMap Catalog Manager</h1>
+    <p>Comprehensive Documentation & Advanced Architectural Overview</p>
+</header>
+
+<div class="container">
+    <h2>1. Project Overview</h2>
+    <p>The <strong>GeoMap Catalog Manager</strong> is a highly optimized desktop application designed to organize, visualize, and seamlessly stream massive geographic maps (up to 140-megapixels). It features an advanced asynchronous progressive rendering engine, strict hierarchical syncing to a local database, and Google Maps-style deep zoom tiling.</p>
+
+    <h2>2. Advanced Architecture Diagram</h2>
+    <div class="mermaid">
+    graph TD
+        subgraph UI Layer
+            UI_Main[Main Window / Splitter]
+            UI_Gal[Gallery Panel]
+            UI_Meta[Metadata Panel]
+            UI_Sync[Sync Progress Dialog]
+            UI_Viewer[Progressive Map Viewer]
+        end
+
+        subgraph Threading Layer
+            Thread_Sync[SyncWorker QThread]
+            Thread_Load[ImageLoader QThread]
+        end
+
+        subgraph Service Layer
+            Svc_Sync[FolderSyncService]
+            Svc_Cache[CacheService Manager]
+        end
+
+        subgraph Data Layer
+            DB[(SQLite Database)]
+            FS[Physical File System]
+            Cache[Cache & Tiles Directory]
+        end
+
+        UI_Main --> UI_Gal
+        UI_Main --> UI_Meta
+        
+        UI_Main -->|Initiates Sync| Thread_Sync
+        Thread_Sync -->|Emits Progress| UI_Sync
+        Thread_Sync --> Svc_Sync
+        
+        Svc_Sync <--> DB
+        Svc_Sync <--> FS
+        Svc_Sync -->|Generates Assets| Svc_Cache
+        
+        Svc_Cache -->|1. Thumbnail 300px<br>2. Preview 1920px<br>3. LOD Tile Pyramid| Cache
+        
+        UI_Gal -->|Double Click Map| UI_Viewer
+        UI_Viewer -->|Loads Instant Preview| Cache
+        UI_Viewer -->|Spawns| Thread_Load
+        Thread_Load -->|Loads Full Res| FS
+        UI_Viewer -->|Streams Tile LOD| Cache
+    </div>
+
+    <h2>3. High-Level Architecture</h2>
+    <p>The application employs an advanced Model-View-Controller (MVC) setup heavily optimized with background multi-threading to guarantee the UI never freezes during heavy computational tasks.</p>
+
+    <div class="grid">
+        <div class="card">
+            <h3>Frontend (UI & Threading)</h3>
+            <ul>
+                <li><strong>GalleryPanel:</strong> Shows 300px cached thumbnails, sorts via regex numerical analysis, and filters by attributes.</li>
+                <li><strong>SyncProgressDialog:</strong> A real-time monitoring UI connected to the <code>SyncWorker</code> thread, tracking ETA, file speeds, and tile generation.</li>
+                <li><strong>MapViewerWindow:</strong> A borderless, hardware-accelerated full-screen viewer. Instantly flashes a 1920px preview while spawning an <code>ImageLoaderThread</code> to asynchronously stream the multi-gigabyte full-resolution image or LOD tiles.</li>
+            </ul>
+        </div>
+        <div class="card">
+            <h3>Backend (Services)</h3>
+            <ul>
+                <li><strong>FolderSyncService:</strong> Keeps the database perfectly synchronized with the physical <code>maps/</code> filesystem. Dispatched to a background <code>QThread</code>.</li>
+                <li><strong>CacheService:</strong> A robust asset pipeline utilizing <code>Pillow (PIL)</code>. It systematically slices massive images into 256x256 multi-level Level-of-Detail (LOD) tile pyramids, identical to Google Maps.</li>
+            </ul>
+        </div>
+    </div>
+
+    <h2>4. Database Schema (SQLAlchemy)</h2>
+    <div class="card">
+        <ul>
+            <li><strong>Geographic Hierarchy:</strong> <code>Country</code> &rarr; <code>State</code> &rarr; <code>District</code>.</li>
+            <li><strong>Map:</strong> Stores the original path and the cached paths (<code>thumbnail_path</code>, <code>preview_path</code>, <code>has_tiles</code>, <code>tile_dir_path</code>).</li>
+            <li><strong>Tags & Metadata:</strong> Dynamic EAV (Entity-Attribute-Value) schema for completely customizable metadata fields.</li>
+        </ul>
+    </div>
+
+    <h2>5. Advanced Systems</h2>
+    <h3>Deep Zoom & Progressive Rendering Pipeline</h3>
+    <p>Loading a 140-megapixel image instantly crashes standard image viewers. This application solves this via a three-tiered pipeline:</p>
+    <ol>
+        <li><strong>Instant Preview:</strong> The <code>MapViewerWindow</code> instantly loads a pre-generated 1920px preview utilizing <code>Qt.SmoothTransformation</code> bilinear filtering.</li>
+        <li><strong>Asynchronous Threading:</strong> A background <code>QThread</code> leverages <code>QImageReader</code> (with an expanded 1GB C++ allocation limit) to decode the massive file without blocking the UI.</li>
+        <li><strong>Tile Streaming (LOD):</strong> If the user zooms, the <code>TiledMapGraphicsItem</code> dynamically calculates the exact mathematical viewport intersection and streams only the necessary 256x256 tiles from the hard drive, utilizing Qt's native 500MB <code>QPixmapCache</code>.</li>
+    </ol>
+
+    <h2>6. Tech Stack Summary</h2>
+    <ul>
+        <li><strong>GUI & Threading:</strong> PySide6 (Qt6) - Native C++ wrapper</li>
+        <li><strong>Database Engine:</strong> SQLite 3 with SQLAlchemy ORM</li>
+        <li><strong>Asset Generation:</strong> Pillow (Python Imaging Library)</li>
+        <li><strong>Visualization:</strong> Mermaid.js (Architecture Diagrams)</li>
+    </ul>
+</div>
+
+</body>
+</html>
